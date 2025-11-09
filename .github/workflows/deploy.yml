@@ -44,11 +44,19 @@ jobs:
           SSH_PASSWORD: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
           DEPLOY_PATH: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
         run: |
+          echo "Starting deployment..."
+          echo "Deploy path: $DEPLOY_PATH"
+          echo "Listing dist contents:"
+          ls -la dist/
+          
           # Create deployment directory
           sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "mkdir -p ~/deploy-temp"
+          echo "Created deploy-temp directory"
 
           # Upload frontend build
+          echo "Uploading files..."
           sshpass -p "$SSH_PASSWORD" scp -P $SSH_PORT -o StrictHostKeyChecking=no -r dist/* $SSH_USER@$SSH_HOST:~/deploy-temp/
+          echo "Files uploaded successfully"
 
           # Deploy files to production location
           sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST bash << EOF
@@ -56,20 +64,37 @@ jobs:
             
             DEPLOY_PATH="$DEPLOY_PATH"
             
+            echo "Deploying to: \$DEPLOY_PATH"
+            echo "Current directory: \$(pwd)"
+            echo "Home directory: \$HOME"
+            
             # Backup existing files (optional)
             if [ -d "\$DEPLOY_PATH" ]; then
+              echo "Backing up existing files..."
               mkdir -p ~/backups
               BACKUP_NAME="backup-\$(date +%Y%m%d-%H%M%S)"
               cp -r "\$DEPLOY_PATH" ~/backups/\$BACKUP_NAME || true
+              echo "Backup created: ~/backups/\$BACKUP_NAME"
             fi
             
             # Create directory if it doesn't exist
+            echo "Creating deployment directory..."
             mkdir -p "\$DEPLOY_PATH"
             
+            # List deploy-temp contents
+            echo "Contents of deploy-temp:"
+            ls -la ~/deploy-temp/
+            
             # Deploy frontend to root
+            echo "Copying files to deployment path..."
             cp -r ~/deploy-temp/* "\$DEPLOY_PATH"/
             
+            # Verify deployment
+            echo "Verifying deployment..."
+            ls -la "\$DEPLOY_PATH"/
+            
             # Set proper permissions
+            echo "Setting permissions..."
             find "\$DEPLOY_PATH" -type d -exec chmod 755 {} \;
             find "\$DEPLOY_PATH" -type f -exec chmod 644 {} \;
             
