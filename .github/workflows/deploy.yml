@@ -44,41 +44,17 @@ jobs:
           SSH_PASSWORD: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
           DEPLOY_PATH: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
         run: |
-          echo "Starting deployment..."
-          echo "Deploy path from secret: $DEPLOY_PATH"
-          echo "Listing dist contents:"
-          ls -la dist/
-
-          # Determine the correct deployment path
-          echo "=== DETERMINING CORRECT DEPLOYMENT PATH ==="
-          CORRECT_PATH=$(sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "if [ -d ~/domains/nyuritchiconsulting.com/public_html/test ]; then echo '~/domains/nyuritchiconsulting.com/public_html/test'; elif [ -d ~/public_html/test ]; then echo '~/public_html/test'; else echo '~/domains/nyuritchiconsulting.com/public_html/test'; fi")
-          
-          # Expand the path
-          ACTUAL_DEPLOY_PATH=$(sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "echo $CORRECT_PATH")
-          
-          echo "Using deployment path: $ACTUAL_DEPLOY_PATH"
-          
-          # Override DEPLOY_PATH if it's different
-          if [ "$DEPLOY_PATH" != "$ACTUAL_DEPLOY_PATH" ]; then
-            echo "WARNING: Secret path ($DEPLOY_PATH) differs from detected path ($ACTUAL_DEPLOY_PATH)"
-            echo "Using detected path: $ACTUAL_DEPLOY_PATH"
-            DEPLOY_PATH="$ACTUAL_DEPLOY_PATH"
-          fi
-
-          # Create deployment directory
+          # Create temporary directory for upload
           sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "mkdir -p ~/deploy-temp"
-          echo "Created deploy-temp directory"
 
-          # Upload frontend build
-          echo "Uploading files..."
+          # Upload build files
           sshpass -p "$SSH_PASSWORD" scp -P $SSH_PORT -o StrictHostKeyChecking=no -r dist/* $SSH_USER@$SSH_HOST:~/deploy-temp/
-          echo "Files uploaded successfully"
 
-          # Deploy files to production location
+          # Deploy to production
           sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST bash << EOF
             set -e
             
-            # Use domain-specific path if it exists, otherwise use the provided path
+            # Use domain-specific path if available, otherwise fallback to provided path
             if [ -d ~/domains/nyuritchiconsulting.com/public_html/test ]; then
               DEPLOY_PATH="~/domains/nyuritchiconsulting.com/public_html/test"
             elif [ -d ~/domains/nyuritchiconsulting.com/public_html ]; then
@@ -90,170 +66,23 @@ jobs:
             # Expand ~ to full path
             DEPLOY_PATH=\$(eval echo \$DEPLOY_PATH)
             
-            echo "Deploying to: \$DEPLOY_PATH"
-            echo "Current directory: \$(pwd)"
-            echo "Home directory: \$HOME"
-            
-            # Backup existing files (optional)
+            # Backup existing files
             if [ -d "\$DEPLOY_PATH" ]; then
-              echo "Backing up existing files..."
               mkdir -p ~/backups
               BACKUP_NAME="backup-\$(date +%Y%m%d-%H%M%S)"
               cp -r "\$DEPLOY_PATH" ~/backups/\$BACKUP_NAME || true
-              echo "Backup created: ~/backups/\$BACKUP_NAME"
             fi
             
-            # Create directory if it doesn't exist
-            echo "Creating deployment directory..."
+            # Create deployment directory and copy files
             mkdir -p "\$DEPLOY_PATH"
-            
-            # List deploy-temp contents
-            echo "Contents of deploy-temp:"
-            ls -la ~/deploy-temp/
-            echo "File count in deploy-temp: \$(ls -1 ~/deploy-temp | wc -l)"
-            
-            # Deploy frontend to root - using explicit copy with verbose output
-            echo "Copying files to deployment path: \$DEPLOY_PATH"
-            echo "Before copy - checking destination:"
-            ls -la "\$DEPLOY_PATH" 2>/dev/null || echo "Destination doesn't exist yet (will be created)"
-            
-            # Copy files explicitly
-            cp -rv ~/deploy-temp/* "\$DEPLOY_PATH"/
-            
-            # Verify immediately after copy
-            echo "Immediately after copy - checking destination:"
-            ls -la "\$DEPLOY_PATH"/
-            echo "File count after copy: \$(ls -1 "\$DEPLOY_PATH" | wc -l)"
-            
-            # Verify deployment
-            echo "Verifying deployment..."
-            echo "Checking if deploy path exists:"
-            if [ -d "\$DEPLOY_PATH" ]; then
-              echo "Directory exists!"
-              echo "Full listing:"
-              ls -lah "\$DEPLOY_PATH"/
-              echo "File count: \$(ls -1 "\$DEPLOY_PATH" | wc -l)"
-              echo "Checking for index.html:"
-              if [ -f "\$DEPLOY_PATH/index.html" ]; then
-                echo "✓ index.html EXISTS"
-                ls -lah "\$DEPLOY_PATH/index.html"
-              else
-                echo "✗ index.html NOT FOUND"
-              fi
-              echo "Checking for assets directory:"
-              if [ -d "\$DEPLOY_PATH/assets" ]; then
-                echo "✓ assets directory EXISTS"
-                ls -lah "\$DEPLOY_PATH/assets"
-              else
-                echo "✗ assets directory NOT FOUND"
-              fi
-            else
-              echo "ERROR: Directory does not exist after deployment!"
-            fi
-            
-            # Also check public_html/test directly
-            echo "Checking ~/public_html/test:"
-            if [ -d ~/public_html/test ]; then
-              echo "Found ~/public_html/test:"
-              ls -la ~/public_html/test/
-            fi
-            
-            # Check home directory structure
-            echo "Home directory structure:"
-            ls -la ~/ | head -20
+            cp -r ~/deploy-temp/* "\$DEPLOY_PATH"/
             
             # Set proper permissions
-            echo "Setting permissions..."
             find "\$DEPLOY_PATH" -type d -exec chmod 755 {} \;
             find "\$DEPLOY_PATH" -type f -exec chmod 644 {} \;
-            
-            # Verify permissions
-            echo "Verifying permissions..."
-            ls -lah "\$DEPLOY_PATH"
-            ls -lah "\$DEPLOY_PATH/assets" 2>/dev/null || echo "Assets directory check failed"
-            
-            # Check if files are web-accessible
-            echo "Checking web accessibility..."
-            echo "Testing if index.html is readable by web server:"
-            test -r "\$DEPLOY_PATH/index.html" && echo "✓ index.html is readable" || echo "✗ index.html is NOT readable"
-            
-            # Also ensure the directory itself is accessible
-            chmod 755 "\$DEPLOY_PATH"
-            chmod 755 "\$DEPLOY_PATH/assets" 2>/dev/null || true
-            
-            # Create a test file to verify file manager can see it
-            echo "Creating test file for verification..."
-            echo "DEPLOYED: \$(date)" > "\$DEPLOY_PATH/.deployed.txt"
-            chmod 644 "\$DEPLOY_PATH/.deployed.txt"
-            
-            # Also create visible test file
-            echo "TEST FILE - Deployment successful at \$(date)" > "\$DEPLOY_PATH/TEST.txt"
-            chmod 644 "\$DEPLOY_PATH/TEST.txt"
-            
-            # Verify test files
-            echo "Test files created:"
-            ls -lah "\$DEPLOY_PATH" | grep -E "(TEST|deployed)"
             
             # Cleanup
             rm -rf ~/deploy-temp
             
-            echo "Frontend deployment completed successfully!"
-            echo ""
-            echo "=== DEPLOYMENT SUMMARY ==="
-            echo "Files deployed to: \$DEPLOY_PATH"
-            echo "Website should be accessible at: https://nyuritchiconsulting.com/test/"
-            echo "All files in directory:"
-            ls -lah "\$DEPLOY_PATH"
-            echo ""
-            echo "If file manager shows empty, check for TEST.txt file - it should be visible"
+            echo "Deployment completed successfully to: \$DEPLOY_PATH"
           EOF
-
-      - name: Verify Deployment
-        env:
-          SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
-          SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
-          SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
-          SSH_PASSWORD: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
-          DEPLOY_PATH: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
-        run: |
-          echo "Final verification of deployment..."
-          echo "Deploy path from secret: $DEPLOY_PATH"
-          sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST bash << VERIFY_EOF
-            DEPLOY_PATH="$DEPLOY_PATH"
-            echo "=== Checking deployment path: \$DEPLOY_PATH ==="
-            if [ -d "\$DEPLOY_PATH" ]; then
-              echo "✓ Directory exists: \$DEPLOY_PATH"
-              echo "Contents:"
-              ls -lah "\$DEPLOY_PATH"
-              echo ""
-              echo "File count: \$(ls -1 "\$DEPLOY_PATH" | wc -l)"
-            else
-              echo "✗ Directory \$DEPLOY_PATH does not exist!"
-            fi
-            echo ""
-            echo "=== Checking ~/public_html/test ==="
-            if [ -d ~/public_html/test ]; then
-              echo "✓ Directory exists: ~/public_html/test"
-              echo "Contents:"
-              ls -lah ~/public_html/test
-              echo ""
-              echo "File count: \$(ls -1 ~/public_html/test | wc -l)"
-              echo ""
-              echo "=== Testing file access ==="
-              if [ -f ~/public_html/test/index.html ]; then
-                echo "✓ index.html exists and is readable"
-                echo "File size: \$(stat -c%s ~/public_html/test/index.html) bytes"
-                head -3 ~/public_html/test/index.html
-              else
-                echo "✗ index.html not found!"
-              fi
-              if [ -d ~/public_html/test/assets ]; then
-                echo "✓ assets directory exists"
-                ls -lah ~/public_html/test/assets
-              else
-                echo "✗ assets directory not found!"
-              fi
-            else
-              echo "✗ ~/public_html/test does not exist!"
-            fi
-          VERIFY_EOF
