@@ -1,0 +1,96 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Detect frontend location
+        id: frontend
+        run: |
+          if [ -f "package.json" ]; then
+            echo "path=." >> $GITHUB_OUTPUT
+            echo "dist=dist" >> $GITHUB_OUTPUT
+          elif [ -f "front/package.json" ]; then
+            echo "path=front" >> $GITHUB_OUTPUT
+            echo "dist=front/dist" >> $GITHUB_OUTPUT
+          else
+            echo "Error: package.json not found in root or front/ directory"
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ${{ steps.frontend.outputs.path }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./${{ steps.frontend.outputs.path }}
+        run: npm ci
+
+      - name: Build React app
+        working-directory: ./${{ steps.frontend.outputs.path }}
+        run: npm run build
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.HOSTINGER_SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to Hostinger
+        env:
+          SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          DEPLOY_PATH: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
+        run: |
+          # Create deployment directory
+          ssh $SSH_USER@$SSH_HOST "mkdir -p ~/deploy-temp"
+
+          # Upload frontend build
+          scp -r ${{ steps.frontend.outputs.dist }}/* $SSH_USER@$SSH_HOST:~/deploy-temp/
+
+          # Deploy files to production location
+          ssh $SSH_USER@$SSH_HOST bash << EOF
+            set -e
+            
+            DEPLOY_PATH="$DEPLOY_PATH"
+            
+            # Backup existing files (optional)
+            if [ -d "\$DEPLOY_PATH" ]; then
+              mkdir -p ~/backups
+              BACKUP_NAME="backup-\$(date +%Y%m%d-%H%M%S)"
+              cp -r "\$DEPLOY_PATH" ~/backups/\$BACKUP_NAME || true
+            fi
+            
+            # Create directory if it doesn't exist
+            mkdir -p "\$DEPLOY_PATH"
+            
+            # Deploy frontend to root
+            cp -r ~/deploy-temp/* "\$DEPLOY_PATH"/
+            
+            # Set proper permissions
+            find "\$DEPLOY_PATH" -type d -exec chmod 755 {} \;
+            find "\$DEPLOY_PATH" -type f -exec chmod 644 {} \;
+            
+            # Cleanup
+            rm -rf ~/deploy-temp
+            
+            echo "Frontend deployment completed successfully!"
+          EOF
+
+      - name: Cleanup SSH
+        if: always()
+        run: |
+          rm -f ~/.ssh/id_rsa
