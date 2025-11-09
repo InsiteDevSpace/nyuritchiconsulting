@@ -155,19 +155,26 @@ jobs:
 **What it does:** Converts `~/domains/...` to full path like `/home/u123456789/domains/...`
 
 ```yaml
-      # Backup existing files to backup folder in test directory
-      if [ -d "\$DEPLOY_PATH" ] && [ "\$(ls -A \$DEPLOY_PATH 2>/dev/null)" ]; then
-        BACKUP_DIR="\$(dirname \$DEPLOY_PATH)/backup"
-        mkdir -p "\$BACKUP_DIR"
-        BACKUP_NAME="backup-\$(date +%Y%m%d-%H%M%S)"
-        cp -r "\$DEPLOY_PATH"/* "\$BACKUP_DIR/\$BACKUP_NAME" || true
+      # Backup existing files to backup folder inside test directory
+      if [ -d "\$DEPLOY_PATH" ]; then
+        # Check if there are files to backup (excluding backup folder)
+        FILES_TO_BACKUP=\$(find "\$DEPLOY_PATH" -mindepth 1 -maxdepth 1 ! -name backup | wc -l)
+        if [ "\$FILES_TO_BACKUP" -gt 0 ]; then
+          BACKUP_DIR="\$DEPLOY_PATH/backup"
+          mkdir -p "\$BACKUP_DIR"
+          BACKUP_NAME="backup-\$(date +%Y%m%d-%H%M%S)"
+          mkdir -p "\$BACKUP_DIR/\$BACKUP_NAME"
+          # Copy all files and folders except the backup directory
+          find "\$DEPLOY_PATH" -mindepth 1 -maxdepth 1 ! -name backup -exec cp -r {} "\$BACKUP_DIR/\$BACKUP_NAME/" \;
+        fi
       fi
 ```
 **What it does:** 
-- Checks if deployment directory exists and is not empty
-- Creates a `backup` folder in the parent directory (e.g., `public_html/backup/`)
+- Checks if deployment directory exists
+- Counts files/folders to backup (excluding the backup folder itself)
+- Creates a `backup` folder inside the test directory (e.g., `test/backup/`)
 - Creates a timestamped backup folder (e.g., `backup-20251109-121500`) containing all old files
-- `|| true` prevents script from failing if backup fails
+- Copies all files and folders from test directory to the backup, excluding the backup folder itself
 
 ```yaml
       # Create deployment directory and copy files

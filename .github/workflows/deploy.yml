@@ -66,12 +66,18 @@ jobs:
             # Expand ~ to full path
             DEPLOY_PATH=\$(eval echo \$DEPLOY_PATH)
             
-            # Backup existing files to backup folder in test directory
-            if [ -d "\$DEPLOY_PATH" ] && [ "\$(ls -A \$DEPLOY_PATH 2>/dev/null)" ]; then
-              BACKUP_DIR="\$(dirname \$DEPLOY_PATH)/backup"
-              mkdir -p "\$BACKUP_DIR"
-              BACKUP_NAME="backup-\$(date +%Y%m%d-%H%M%S)"
-              cp -r "\$DEPLOY_PATH"/* "\$BACKUP_DIR/\$BACKUP_NAME" || true
+            # Backup existing files to backup folder inside test directory
+            if [ -d "\$DEPLOY_PATH" ]; then
+              # Check if there are files to backup (excluding backup folder)
+              FILES_TO_BACKUP=\$(find "\$DEPLOY_PATH" -mindepth 1 -maxdepth 1 ! -name backup | wc -l)
+              if [ "\$FILES_TO_BACKUP" -gt 0 ]; then
+                BACKUP_DIR="\$DEPLOY_PATH/backup"
+                mkdir -p "\$BACKUP_DIR"
+                BACKUP_NAME="backup-\$(date +%Y%m%d-%H%M%S)"
+                mkdir -p "\$BACKUP_DIR/\$BACKUP_NAME"
+                # Copy all files and folders except the backup directory
+                find "\$DEPLOY_PATH" -mindepth 1 -maxdepth 1 ! -name backup -exec cp -r {} "\$BACKUP_DIR/\$BACKUP_NAME/" \;
+              fi
             fi
             
             # Create deployment directory and copy files
