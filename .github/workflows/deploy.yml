@@ -84,18 +84,43 @@ jobs:
             # List deploy-temp contents
             echo "Contents of deploy-temp:"
             ls -la ~/deploy-temp/
+            echo "File count in deploy-temp: \$(ls -1 ~/deploy-temp | wc -l)"
             
-            # Deploy frontend to root
-            echo "Copying files to deployment path..."
-            cp -r ~/deploy-temp/* "\$DEPLOY_PATH"/
+            # Deploy frontend to root - using explicit copy with verbose output
+            echo "Copying files to deployment path: \$DEPLOY_PATH"
+            echo "Before copy - checking destination:"
+            ls -la "\$DEPLOY_PATH" 2>/dev/null || echo "Destination doesn't exist yet (will be created)"
+            
+            # Copy files explicitly
+            cp -rv ~/deploy-temp/* "\$DEPLOY_PATH"/
+            
+            # Verify immediately after copy
+            echo "Immediately after copy - checking destination:"
+            ls -la "\$DEPLOY_PATH"/
+            echo "File count after copy: \$(ls -1 "\$DEPLOY_PATH" | wc -l)"
             
             # Verify deployment
             echo "Verifying deployment..."
             echo "Checking if deploy path exists:"
             if [ -d "\$DEPLOY_PATH" ]; then
               echo "Directory exists!"
-              ls -la "\$DEPLOY_PATH"/
+              echo "Full listing:"
+              ls -lah "\$DEPLOY_PATH"/
               echo "File count: \$(ls -1 "\$DEPLOY_PATH" | wc -l)"
+              echo "Checking for index.html:"
+              if [ -f "\$DEPLOY_PATH/index.html" ]; then
+                echo "✓ index.html EXISTS"
+                ls -lah "\$DEPLOY_PATH/index.html"
+              else
+                echo "✗ index.html NOT FOUND"
+              fi
+              echo "Checking for assets directory:"
+              if [ -d "\$DEPLOY_PATH/assets" ]; then
+                echo "✓ assets directory EXISTS"
+                ls -lah "\$DEPLOY_PATH/assets"
+              else
+                echo "✗ assets directory NOT FOUND"
+              fi
             else
               echo "ERROR: Directory does not exist after deployment!"
             fi
@@ -121,7 +146,7 @@ jobs:
             
             echo "Frontend deployment completed successfully!"
           EOF
-      
+
       - name: Verify Deployment
         env:
           SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
@@ -131,4 +156,33 @@ jobs:
           DEPLOY_PATH: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
         run: |
           echo "Final verification of deployment..."
-          sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ls -la $DEPLOY_PATH || echo 'Path not found'; echo '---'; ls -la ~/public_html/test/ || echo 'Alternative path not found'"
+          sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST bash << 'VERIFY_EOF'
+            echo "=== Checking deployment path ==="
+            if [ -d "$DEPLOY_PATH" ]; then
+              echo "Directory exists: $DEPLOY_PATH"
+              echo "Contents:"
+              ls -lah "$DEPLOY_PATH"
+              echo ""
+              echo "File details:"
+              find "$DEPLOY_PATH" -type f -exec ls -lah {} \;
+              echo ""
+              echo "Directory details:"
+              find "$DEPLOY_PATH" -type d -exec ls -ldh {} \;
+            else
+              echo "ERROR: Directory $DEPLOY_PATH does not exist!"
+            fi
+            echo ""
+            echo "=== Checking ~/public_html/test ==="
+            if [ -d ~/public_html/test ]; then
+              echo "Directory exists: ~/public_html/test"
+              ls -lah ~/public_html/test
+            fi
+            echo ""
+            echo "=== Testing file access ==="
+            if [ -f "$DEPLOY_PATH/index.html" ]; then
+              echo "index.html exists and is readable"
+              head -5 "$DEPLOY_PATH/index.html"
+            else
+              echo "ERROR: index.html not found!"
+            fi
+          VERIFY_EOF
