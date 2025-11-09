@@ -48,7 +48,7 @@ jobs:
           echo "Deploy path: $DEPLOY_PATH"
           echo "Listing dist contents:"
           ls -la dist/
-          
+
           # Create deployment directory
           sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "mkdir -p ~/deploy-temp"
           echo "Created deploy-temp directory"
@@ -91,7 +91,25 @@ jobs:
             
             # Verify deployment
             echo "Verifying deployment..."
-            ls -la "\$DEPLOY_PATH"/
+            echo "Checking if deploy path exists:"
+            if [ -d "\$DEPLOY_PATH" ]; then
+              echo "Directory exists!"
+              ls -la "\$DEPLOY_PATH"/
+              echo "File count: \$(ls -1 "\$DEPLOY_PATH" | wc -l)"
+            else
+              echo "ERROR: Directory does not exist after deployment!"
+            fi
+            
+            # Also check public_html/test directly
+            echo "Checking ~/public_html/test:"
+            if [ -d ~/public_html/test ]; then
+              echo "Found ~/public_html/test:"
+              ls -la ~/public_html/test/
+            fi
+            
+            # Check home directory structure
+            echo "Home directory structure:"
+            ls -la ~/ | head -20
             
             # Set proper permissions
             echo "Setting permissions..."
@@ -103,3 +121,14 @@ jobs:
             
             echo "Frontend deployment completed successfully!"
           EOF
+      
+      - name: Verify Deployment
+        env:
+          SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          SSH_PASSWORD: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+          DEPLOY_PATH: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
+        run: |
+          echo "Final verification of deployment..."
+          sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "ls -la $DEPLOY_PATH || echo 'Path not found'; echo '---'; ls -la ~/public_html/test/ || echo 'Alternative path not found'"
