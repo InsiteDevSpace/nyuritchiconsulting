@@ -51,7 +51,40 @@ npm run preview
 
 ## Deployment
 
-The `dist` folder contains the production-ready files. You can deploy it to:
+### Automatic Deployment with GitHub Actions (SSH)
+
+This project includes GitHub Actions workflow for automatic deployment via SSH. The workflow automatically builds and deploys your app when you push to the `main` branch.
+
+#### Setup GitHub Secrets
+
+Go to your GitHub repository → Settings → Secrets and variables → Actions, and add the following secrets:
+
+1. **HOSTINGER_SSH_USER**: Your SSH username (e.g., `u173971351`)
+
+2. **HOSTINGER_SSH_PASSWORD**: Your SSH password
+
+3. **HOSTINGER_SSH_HOST**: Your server IP address (e.g., `145.14.153.48`)
+
+4. **HOSTINGER_SSH_PORT**: Your SSH port (e.g., `65002`)
+
+5. **HOSTINGER_DEPLOY_PATH**: Deployment path on server (e.g., `/home/u173971351/public_html` or `/domains/nyuritchiconsulting.com/public_html`)
+
+#### Deploy
+
+Simply push to the `main` branch:
+```bash
+git push origin main
+```
+
+The GitHub Actions workflow will:
+1. Build your React app
+2. Connect to your server via SSH
+3. Deploy the built files to the specified path
+4. Create backups of previous deployments
+
+### Manual Deployment
+
+The `dist` folder contains the production-ready files. You can also manually deploy it to:
 
 - **Netlify**: Drag and drop the `dist` folder
 - **Vercel**: Connect your repository or deploy the `dist` folder
