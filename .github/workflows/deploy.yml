@@ -155,6 +155,19 @@ jobs:
             chmod 755 "\$DEPLOY_PATH"
             chmod 755 "\$DEPLOY_PATH/assets" 2>/dev/null || true
             
+            # Create a test file to verify file manager can see it
+            echo "Creating test file for verification..."
+            echo "DEPLOYED: \$(date)" > "\$DEPLOY_PATH/.deployed.txt"
+            chmod 644 "\$DEPLOY_PATH/.deployed.txt"
+            
+            # Also create visible test file
+            echo "TEST FILE - Deployment successful at \$(date)" > "\$DEPLOY_PATH/TEST.txt"
+            chmod 644 "\$DEPLOY_PATH/TEST.txt"
+            
+            # Verify test files
+            echo "Test files created:"
+            ls -lah "\$DEPLOY_PATH" | grep -E "(TEST|deployed)"
+            
             # Cleanup
             rm -rf ~/deploy-temp
             
@@ -163,8 +176,10 @@ jobs:
             echo "=== DEPLOYMENT SUMMARY ==="
             echo "Files deployed to: \$DEPLOY_PATH"
             echo "Website should be accessible at: https://nyuritchiconsulting.com/test/"
-            echo "Files in directory:"
-            ls -1 "\$DEPLOY_PATH"
+            echo "All files in directory:"
+            ls -lah "\$DEPLOY_PATH"
+            echo ""
+            echo "If file manager shows empty, check for TEST.txt file - it should be visible"
           EOF
 
       - name: Verify Deployment
