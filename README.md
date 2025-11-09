@@ -216,3 +216,35 @@ Add these in: Repository → Settings → Secrets and variables → Actions
 3. **HOSTINGER_SSH_HOST** - Server IP address
 4. **HOSTINGER_SSH_PORT** - SSH port number
 5. **HOSTINGER_DEPLOY_PATH** - Deployment path (fallback if domain path not found)
+
+## Additional GitHub Actions Workflows
+
+### CI Workflow (`.github/workflows/ci.yml`)
+**What it does:**
+- Runs on every pull request and push to main
+- Verifies the React app builds successfully
+- Checks that build output files exist
+- Prevents broken code from being merged
+
+### Security Scan (`.github/workflows/security.yml`)
+**What it does:**
+- Runs weekly (every Sunday) and on pull requests
+- Scans npm dependencies for known vulnerabilities
+- Reports security issues in the workflow logs
+- Helps keep dependencies secure
+
+### Preview Build (`.github/workflows/preview.yml`)
+**What it does:**
+- Runs on pull requests
+- Builds the app and uploads artifacts
+- Comments on PR with build information
+- Allows downloading build files for testing
+
+## Workflow Summary
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `deploy.yml` | Push to main / Manual | Deploys to production server |
+| `ci.yml` | PR / Push to main | Verifies build works |
+| `security.yml` | Weekly / PR | Scans for vulnerabilities |
+| `preview.yml` | PR | Creates preview build |
