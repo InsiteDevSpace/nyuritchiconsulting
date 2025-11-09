@@ -1,111 +1,208 @@
-# React Test Hosting App
+# Deployment Workflow Explanation
 
-A simple React application built with Vite, ready for hosting.
+This document explains each line of the GitHub Actions deployment workflow (`.github/workflows/deploy.yml`).
 
-## Features
+## Workflow File Breakdown
 
-- ⚡️ Fast development with Vite
-- ⚛️ React 18
-- 🎨 Modern UI with gradient design
-- 📱 Responsive layout
-- 🚀 Production-ready build
+### Workflow Name and Triggers
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js (v16 or higher)
-- npm or yarn
-
-### Installation
-
-1. Install dependencies:
-```bash
-npm install
+```yaml
+name: Deploy to Hostinger
 ```
+**What it does:** Sets the name of the workflow that appears in GitHub Actions.
 
-### Development
-
-Start the development server:
-```bash
-npm run dev
+```yaml
+on:
+  push:
+    branches:
+      - main
 ```
+**What it does:** Triggers the workflow automatically when code is pushed to the `main` branch.
 
-The app will open at `http://localhost:3000`
-
-### Build for Production
-
-Create a production build:
-```bash
-npm run build
+```yaml
+  workflow_dispatch:
 ```
+**What it does:** Allows manual triggering of the workflow from the GitHub Actions tab.
 
-The built files will be in the `dist` directory, ready to be deployed to any static hosting service.
+### Job Configuration
 
-### Preview Production Build
-
-Preview the production build locally:
-```bash
-npm run preview
+```yaml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 ```
+**What it does:** Creates a job named "deploy" that runs on the latest Ubuntu virtual machine.
 
-## Deployment
+### Step 1: Checkout Code
 
-### Automatic Deployment with GitHub Actions (SSH)
-
-This project includes GitHub Actions workflow for automatic deployment via SSH. The workflow automatically builds and deploys your app when you push to the `main` branch.
-
-#### Setup GitHub Secrets
-
-Go to your GitHub repository → Settings → Secrets and variables → Actions, and add the following secrets:
-
-1. **HOSTINGER_SSH_USER**: Your SSH username (e.g., `u173971351`)
-
-2. **HOSTINGER_SSH_PASSWORD**: Your SSH password
-
-3. **HOSTINGER_SSH_HOST**: Your server IP address (e.g., `145.14.153.48`)
-
-4. **HOSTINGER_SSH_PORT**: Your SSH port (e.g., `65002`)
-
-5. **HOSTINGER_DEPLOY_PATH**: Deployment path on server (e.g., `/home/u173971351/public_html` or `/domains/nyuritchiconsulting.com/public_html`)
-
-#### Deploy
-
-Simply push to the `main` branch:
-```bash
-git push origin main
+```yaml
+- name: Checkout code
+  uses: actions/checkout@v4
 ```
+**What it does:** Downloads your repository code to the GitHub Actions runner so it can build your app.
 
-The GitHub Actions workflow will:
-1. Build your React app
-2. Connect to your server via SSH
-3. Deploy the built files to the specified path
-4. Create backups of previous deployments
+### Step 2: Setup Node.js
 
-### Manual Deployment
-
-The `dist` folder contains the production-ready files. You can also manually deploy it to:
-
-- **Netlify**: Drag and drop the `dist` folder
-- **Vercel**: Connect your repository or deploy the `dist` folder
-- **GitHub Pages**: Upload the `dist` folder contents
-- **Any static hosting service**: Upload the `dist` folder contents
-
-## Project Structure
-
+```yaml
+- name: Setup Node.js
+  uses: actions/setup-node@v4
+  with:
+    node-version: "18"
+    cache: "npm"
 ```
-├── index.html          # HTML entry point
-├── vite.config.js      # Vite configuration
-├── package.json        # Dependencies and scripts
-├── src/
-│   ├── main.jsx       # React entry point
-│   ├── App.jsx        # Main App component
-│   ├── App.css        # App styles
-│   └── index.css      # Global styles
-└── dist/              # Production build (generated)
+**What it does:** 
+- Installs Node.js version 18 on the runner
+- Caches npm packages to speed up future runs
+
+### Step 3: Install Dependencies
+
+```yaml
+- name: Install dependencies
+  run: npm ci
 ```
+**What it does:** Installs all project dependencies from `package-lock.json` (clean install, faster and more reliable than `npm install`).
 
-## License
+### Step 4: Build React App
 
-MIT
+```yaml
+- name: Build React app
+  run: npm run build
+```
+**What it does:** Builds your React app for production, creating optimized files in the `dist/` folder.
 
+### Step 5: Install sshpass
+
+```yaml
+- name: Install sshpass
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y sshpass
+```
+**What it does:** 
+- Updates package list
+- Installs `sshpass` tool which allows SSH password authentication (needed because we use password instead of SSH keys)
+
+### Step 6: Setup SSH
+
+```yaml
+- name: Setup SSH
+  run: |
+    mkdir -p ~/.ssh
+    ssh-keyscan -p ${{ secrets.HOSTINGER_SSH_PORT }} -H ${{ secrets.HOSTINGER_SSH_HOST }} >> ~/.ssh/known_hosts
+```
+**What it does:** 
+- Creates the `.ssh` directory if it doesn't exist
+- Adds the server's SSH fingerprint to `known_hosts` to avoid connection prompts
+
+### Step 7: Deploy to Hostinger
+
+```yaml
+- name: Deploy to Hostinger
+  env:
+    SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+    SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+    SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+    SSH_PASSWORD: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+    DEPLOY_PATH: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
+```
+**What it does:** Sets environment variables from GitHub Secrets (SSH credentials and deployment path).
+
+```yaml
+  run: |
+    # Create temporary directory for upload
+    sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "mkdir -p ~/deploy-temp"
+```
+**What it does:** 
+- Connects to your server via SSH using password authentication
+- Creates a temporary directory `~/deploy-temp` on the server to store files before deployment
+
+```yaml
+    # Upload build files
+    sshpass -p "$SSH_PASSWORD" scp -P $SSH_PORT -o StrictHostKeyChecking=no -r dist/* $SSH_USER@$SSH_HOST:~/deploy-temp/
+```
+**What it does:** 
+- Uses `scp` (secure copy) to upload all files from the local `dist/` folder to the server's `~/deploy-temp/` directory
+- `-r` flag copies recursively (includes subdirectories like `assets/`)
+
+```yaml
+    # Deploy to production
+    sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST bash << EOF
+      set -e
+```
+**What it does:** 
+- Connects to server and runs a bash script
+- `set -e` stops execution if any command fails (error handling)
+
+```yaml
+      # Use domain-specific path if available, otherwise fallback to provided path
+      if [ -d ~/domains/nyuritchiconsulting.com/public_html/test ]; then
+        DEPLOY_PATH="~/domains/nyuritchiconsulting.com/public_html/test"
+      elif [ -d ~/domains/nyuritchiconsulting.com/public_html ]; then
+        DEPLOY_PATH="~/domains/nyuritchiconsulting.com/public_html/test"
+      else
+        DEPLOY_PATH="$DEPLOY_PATH"
+      fi
+```
+**What it does:** 
+- Checks if domain-specific directory exists (Hostinger uses this structure)
+- If found, uses that path; otherwise uses the path from GitHub Secrets
+- This ensures files go to the correct location that the web server can access
+
+```yaml
+      # Expand ~ to full path
+      DEPLOY_PATH=\$(eval echo \$DEPLOY_PATH)
+```
+**What it does:** Converts `~/domains/...` to full path like `/home/u123456789/domains/...`
+
+```yaml
+      # Backup existing files
+      if [ -d "\$DEPLOY_PATH" ]; then
+        mkdir -p ~/backups
+        BACKUP_NAME="backup-\$(date +%Y%m%d-%H%M%S)"
+        cp -r "\$DEPLOY_PATH" ~/backups/\$BACKUP_NAME || true
+      fi
+```
+**What it does:** 
+- If deployment directory already exists, creates a backup with timestamp
+- `|| true` prevents script from failing if backup fails
+
+```yaml
+      # Create deployment directory and copy files
+      mkdir -p "\$DEPLOY_PATH"
+      cp -r ~/deploy-temp/* "\$DEPLOY_PATH"/
+```
+**What it does:** 
+- Creates the deployment directory if it doesn't exist
+- Copies all files from temporary directory to the final deployment location
+
+```yaml
+      # Set proper permissions
+      find "\$DEPLOY_PATH" -type d -exec chmod 755 {} \;
+      find "\$DEPLOY_PATH" -type f -exec chmod 644 {} \;
+```
+**What it does:** 
+- Sets directory permissions to 755 (readable/executable by all, writable by owner)
+- Sets file permissions to 644 (readable by all, writable by owner)
+- This ensures the web server can read and serve your files
+
+```yaml
+      # Cleanup
+      rm -rf ~/deploy-temp
+```
+**What it does:** Removes the temporary directory after deployment is complete.
+
+```yaml
+      echo "Deployment completed successfully to: \$DEPLOY_PATH"
+    EOF
+```
+**What it does:** Prints success message with the deployment path, then ends the remote bash script.
+
+## Required GitHub Secrets
+
+Add these in: Repository → Settings → Secrets and variables → Actions
+
+1. **HOSTINGER_SSH_USER** - Your SSH username
+2. **HOSTINGER_SSH_PASSWORD** - Your SSH password
+3. **HOSTINGER_SSH_HOST** - Server IP address
+4. **HOSTINGER_SSH_PORT** - SSH port number
+5. **HOSTINGER_DEPLOY_PATH** - Deployment path (fallback if domain path not found)
