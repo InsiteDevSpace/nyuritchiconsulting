@@ -141,10 +141,30 @@ jobs:
             find "\$DEPLOY_PATH" -type d -exec chmod 755 {} \;
             find "\$DEPLOY_PATH" -type f -exec chmod 644 {} \;
             
+            # Verify permissions
+            echo "Verifying permissions..."
+            ls -lah "\$DEPLOY_PATH"
+            ls -lah "\$DEPLOY_PATH/assets" 2>/dev/null || echo "Assets directory check failed"
+            
+            # Check if files are web-accessible
+            echo "Checking web accessibility..."
+            echo "Testing if index.html is readable by web server:"
+            test -r "\$DEPLOY_PATH/index.html" && echo "✓ index.html is readable" || echo "✗ index.html is NOT readable"
+            
+            # Also ensure the directory itself is accessible
+            chmod 755 "\$DEPLOY_PATH"
+            chmod 755 "\$DEPLOY_PATH/assets" 2>/dev/null || true
+            
             # Cleanup
             rm -rf ~/deploy-temp
             
             echo "Frontend deployment completed successfully!"
+            echo ""
+            echo "=== DEPLOYMENT SUMMARY ==="
+            echo "Files deployed to: \$DEPLOY_PATH"
+            echo "Website should be accessible at: https://nyuritchiconsulting.com/test/"
+            echo "Files in directory:"
+            ls -1 "\$DEPLOY_PATH"
           EOF
 
       - name: Verify Deployment
