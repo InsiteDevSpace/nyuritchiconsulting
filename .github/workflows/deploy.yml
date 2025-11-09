@@ -45,9 +45,61 @@ jobs:
           DEPLOY_PATH: ${{ secrets.HOSTINGER_DEPLOY_PATH }}
         run: |
           echo "Starting deployment..."
-          echo "Deploy path: $DEPLOY_PATH"
+          echo "Deploy path from secret: $DEPLOY_PATH"
           echo "Listing dist contents:"
           ls -la dist/
+          
+          # First, let's check the actual file system structure
+          echo "=== CHECKING ACTUAL FILE SYSTEM STRUCTURE ==="
+          sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST bash << 'CHECK_EOF'
+            echo "Home directory: $HOME"
+            echo "Current directory: $(pwd)"
+            echo ""
+            echo "=== Checking public_html structure ==="
+            if [ -d ~/public_html ]; then
+              echo "public_html exists:"
+              ls -la ~/public_html/
+              echo ""
+              if [ -d ~/public_html/test ]; then
+                echo "test directory exists in public_html:"
+                ls -la ~/public_html/test/
+              else
+                echo "test directory does NOT exist in public_html"
+              fi
+            else
+              echo "public_html does NOT exist in home directory"
+            fi
+            echo ""
+            echo "=== Checking domains structure ==="
+            if [ -d ~/domains ]; then
+              echo "domains directory exists:"
+              ls -la ~/domains/
+              if [ -d ~/domains/nyuritchiconsulting.com ]; then
+                echo ""
+                echo "nyuritchiconsulting.com directory:"
+                ls -la ~/domains/nyuritchiconsulting.com/
+                if [ -d ~/domains/nyuritchiconsulting.com/public_html ]; then
+                  echo ""
+                  echo "public_html in domain directory:"
+                  ls -la ~/domains/nyuritchiconsulting.com/public_html/
+                  if [ -d ~/domains/nyuritchiconsulting.com/public_html/test ]; then
+                    echo ""
+                    echo "test directory in domain public_html:"
+                    ls -la ~/domains/nyuritchiconsulting.com/public_html/test/
+                  fi
+                fi
+              fi
+            fi
+            echo ""
+            echo "=== Full path check ==="
+            echo "Checking: $DEPLOY_PATH"
+            if [ -d "$DEPLOY_PATH" ]; then
+              echo "Path exists! Contents:"
+              ls -la "$DEPLOY_PATH"
+            else
+              echo "Path does NOT exist!"
+            fi
+          CHECK_EOF
 
           # Create deployment directory
           sshpass -p "$SSH_PASSWORD" ssh -p $SSH_PORT -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "mkdir -p ~/deploy-temp"
