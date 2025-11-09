@@ -155,15 +155,18 @@ jobs:
 **What it does:** Converts `~/domains/...` to full path like `/home/u123456789/domains/...`
 
 ```yaml
-      # Backup existing files
-      if [ -d "\$DEPLOY_PATH" ]; then
-        mkdir -p ~/backups
+      # Backup existing files to backup folder in test directory
+      if [ -d "\$DEPLOY_PATH" ] && [ "\$(ls -A \$DEPLOY_PATH 2>/dev/null)" ]; then
+        BACKUP_DIR="\$(dirname \$DEPLOY_PATH)/backup"
+        mkdir -p "\$BACKUP_DIR"
         BACKUP_NAME="backup-\$(date +%Y%m%d-%H%M%S)"
-        cp -r "\$DEPLOY_PATH" ~/backups/\$BACKUP_NAME || true
+        cp -r "\$DEPLOY_PATH"/* "\$BACKUP_DIR/\$BACKUP_NAME" || true
       fi
 ```
 **What it does:** 
-- If deployment directory already exists, creates a backup with timestamp
+- Checks if deployment directory exists and is not empty
+- Creates a `backup` folder in the parent directory (e.g., `public_html/backup/`)
+- Creates a timestamped backup folder (e.g., `backup-20251109-121500`) containing all old files
 - `|| true` prevents script from failing if backup fails
 
 ```yaml
